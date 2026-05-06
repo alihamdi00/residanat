@@ -598,12 +598,73 @@ function go(page, params={}){
 
 function render(){
   const ca = document.getElementById('content-area');
-  const pages = {accueil:rAccueil, series:rSeries, spec:rSpec, sujet:rSujet, sdetail:rSDetail, admin:rAdmin};
+  const pages = {accueil:rAccueil, series:rSeries, spec:rSpec, sujet:rSujet, sdetail:rSDetail, admin:rAdmin, playlist:rPlaylist};
   const fn = pages[S.page];
   if(fn) ca.innerHTML = fn();
   else ca.innerHTML = `<div class="cs"><div class="big">${{examens:'📝',stats:'📊',profil:'👤',abo:'💎'}[S.page]||'🔧'}</div><h2>${{examens:'Examens Blancs',stats:'Statistiques',profil:'Mon Profil',abo:'Abonnement'}[S.page]||S.page}</h2><p>Fonctionnalité à venir prochainement.</p></div>`;
   const titles = {accueil:'Accueil',series:'Séries',spec:'Séries',sujet:'Séries',sdetail:'Séries',admin:'Administration',examens:'Examens Blancs',stats:'Statistiques',profil:'Mon Profil',abo:'Abonnement'};
   setTitle(titles[S.page]||S.page);
+}
+
+async function rPlaylist() {
+  const { data } = await supabaseClient
+    .from('bookmarks')
+    .select('question_id')
+    .eq('user_id', userId);
+
+  if (!data || !data.length) {
+    return `<div class="cs"><div class="big">🎵</div><h2>Playlist vide</h2><p>Marquez des questions en cliquant sur 🔖 pendant une série.</p></div>`;
+  }
+
+  const qids = data.map(b => b.question_id);
+  // Récupérer les questions
+  const { data: questions } = await supabaseClient
+    .from('questions')
+    .select('*')
+    .in('id', qids);
+
+  let html = '<div class="page-title">Playlist</div><div class="title-line"></div>';
+  if (!questions || !questions.length) return html + '<p>Aucune question trouvée.</p>';
+
+  html += '<div style="display:flex;flex-direction:column;gap:8px">';
+  for (const q of questions) {
+    // Trouver la série pour avoir le breadcrumb
+    const serie = db.series.find(s => s.id === q.serie_id);
+    const sujet = serie ? db.sujets.find(s => s.id === serie.sujet_id) : null;
+    const spec = sujet ? db.specs.find(s => s.id === sujet.spec_id) : null;
+    const bread = `${spec?.name || '?'} / ${sujet?.name || '?'} / ${serie?.source || '?'} ${serie?.year || '?'}`;
+
+    html += `<div style="background:var(--card);border-radius:var(--radius);padding:12px;border:1px solid var(--border);cursor:pointer" onclick="startBookmarkSerie('${q.serie_id}','${q.id}')">
+      <div style="font-size:12px;color:var(--muted)">${bread}</div>
+      <div style="margin-top:4px">${(q.enonce || q.vignette || '').substring(0,120)}...</div>
+    </div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function startBookmarkSerie(sid, qid) {
+  // Lancer la série mais sauter à la question marquée
+  const sr = db.series.find(s => s.id === sid);
+  if (!sr) return;
+  const qs = qsOfSerie(sid);
+  if (!qs.length) return;
+  let idx = qs.findIndex(q => q.id === qid);
+  if (idx === -1) idx = 0;
+  timerSec = 0;
+  const sj = db.sujets.find(s => s.id === sr.sujetId);
+  const sp = db.specs.find(s => s.id === sj?.specId);
+  S.session = {
+    sid,
+    name: `${sr.source} ${sr.year}`,
+    bread: `${sp?.name || ''} / ${sj?.name || ''}`,
+    qs,
+    idx,
+    sel: {},
+    rev: {}
+  };
+  S.sideTab = 'prog';
+  go('qcm');
 }
 
 /* ── ACCUEIL ── */
@@ -948,19 +1009,21 @@ async function sendComment(qid){
   toast('💬 Commentaire publié');
 }
 async function toggleBookmark(qid) {
-  const existing = await supabaseClient
+  const { data } = await supabaseClient
     .from('bookmarks')
     .select('*')
     .eq('user_id', userId)
     .eq('question_id', qid)
-    .single();
+    .maybeSingle();
 
-  if (existing.data) {
+  if (data) {
     await supabaseClient.from('bookmarks').delete().eq('user_id', userId).eq('question_id', qid);
     toast('🔇 Retiré de la playlist');
+    document.getElementById('bookmark-btn').textContent = '🔖';
   } else {
     await supabaseClient.from('bookmarks').insert({ user_id: userId, question_id: qid });
     toast('🔖 Ajouté à la playlist');
+    document.getElementById('bookmark-btn').textContent = '⭐';
   }
 }
 function toggleReply(ci){ const rf=document.getElementById('rf-'+ci); if(rf) rf.classList.toggle('show'); }
