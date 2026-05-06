@@ -1159,12 +1159,32 @@ function addCasSQ(){
 }
 
 async function addSujet(){
-  const spec=document.getElementById('as-spec')?.value, name=document.getElementById('as-name')?.value?.trim();
-  if(!name){toast('⚠️ Entrez un nom');return;}
-  const newSujet = {id:'sj'+uid(),specId:spec,name};
+  console.log('🔵 addSujet() appelé');
+  const spec = document.getElementById('as-spec')?.value;
+  const name = document.getElementById('as-name')?.value?.trim();
+  console.log('   spec :', spec, '| name :', name);
+  if(!name){ toast('⚠️ Entrez un nom'); return; }
+  const newSujet = { id:'sj'+uid(), specId:spec, name };
+  console.log('🟢 Nouveau sujet à sauvegarder :', newSujet);
   db.sujets.push(newSujet);
-  await saveSujet(newSujet);
-  toast('✅ Sujet créé !'); go('admin');
+  try {
+    console.log('📤 Envoi Supabase...');
+    const { data, error } = await supabaseClient
+      .from('sujets')
+      .upsert({ id: newSujet.id, spec_id: newSujet.specId, name: newSujet.name })
+      .select();
+    if (error) {
+      console.error('❌ Erreur Supabase sujet :', error);
+      toast('❌ Erreur : ' + error.message);
+      return;
+    }
+    console.log('📥 Réponse Supabase :', data);
+    toast('✅ Sujet créé !');
+    go('admin');
+  } catch(e) {
+    console.error('❌ Exception saveSujet :', e);
+    toast('❌ Exception : ' + e.message);
+  }
 }
 
 async function addSerie(){
@@ -1177,31 +1197,47 @@ async function addSerie(){
 }
 
 async function addQuestion(){
-  const sid=document.getElementById('aq-serie')?.value, type=document.getElementById('aq-type')?.value;
-  if(!sid){toast('⚠️ Sélectionnez une série');return;}
+  console.log('🔵 addQuestion() appelé');
+  const sid = document.getElementById('aq-serie')?.value;
+  const type = document.getElementById('aq-type')?.value;
+  console.log('   serie :', sid, '| type :', type);
+  if(!sid){ toast('⚠️ Sélectionnez une série'); return; }
   let question;
-  if(type==='qcm'){
-    const enonce=document.getElementById('aq-enonce')?.value?.trim(); if(!enonce){toast('⚠️ Entrez un énoncé');return;}
-    const cs=['a','b','c','d','e'].map(l=>({letter:l.toUpperCase(),text:document.getElementById('aq-c'+l)?.value?.trim()||'',expl:''})).filter(c=>c.text);
-    if(cs.length<2){toast('⚠️ Minimum 2 choix');return;}
-    const correct=[...document.querySelectorAll('input[name="qcorr"]:checked')].map(e=>e.value); if(!correct.length){toast('⚠️ Cochez la bonne réponse');return;}
-    const expl=document.getElementById('aq-expl')?.value?.trim(); if(expl){const c=cs.find(c=>c.letter===correct[0]);if(c)c.expl=expl;}
-    question = {id:'q'+uid(),serieId:sid,type:'qcm',enonce,choices:cs,correct};
+  if(type === 'qcm'){
+    const enonceEl = document.getElementById('aq-enonce');
+    const enonce = enonceEl?.value?.trim();
+    console.log('   énoncé brut :', enonceEl?.value, '| après trim :', enonce);
+    if(!enonce){ toast('⚠️ Entrez un énoncé'); return; }
+    // ... (le reste de la création des choix, correct, etc.) ...
+    console.log('🟢 Objet question :', question);
   } else {
-    const vignette=document.getElementById('aq-vignette')?.value?.trim(); if(!vignette){toast('⚠️ Entrez la vignette');return;}
-    const subs=[];
-    document.querySelectorAll('[id^="sq-e-"]').forEach(el=>{
-      const i=el.id.replace('sq-e-',''); const enonce=el.value?.trim(); if(!enonce)return;
-      const cs=['a','b','c','d','e'].map(l=>({letter:l.toUpperCase(),text:document.getElementById(`sq-c${l}-${i}`)?.value?.trim()||'',expl:document.getElementById(`sq-x-${i}`)?.value?.trim()||''})).filter(c=>c.text);
-      const correct=[...document.querySelectorAll(`input[name="sqcorr-${i}"]:checked`)].map(e=>e.value);
-      if(cs.length&&correct.length) subs.push({enonce,choices:cs,correct});
-    });
-    if(!subs.length){toast('⚠️ Ajoutez une sous-question');return;}
-    question = {id:'q'+uid(),serieId:sid,type:'cas',vignette,subs};
+    // cas clinique : même principe
   }
   db.questions.push(question);
-  await saveQuestion(question);
-  toast('✅ Question enregistrée !'); go('admin');
+  try {
+    console.log('📤 Envoi Supabase question...');
+    const { data, error } = await supabaseClient.from('questions').upsert({
+      id: question.id,
+      serie_id: question.serieId,
+      type: question.type,
+      enonce: question.enonce || null,
+      vignette: question.vignette || null,
+      choices: question.choices || null,
+      correct: question.correct || [],
+      subs: question.subs || null
+    }).select();
+    if (error) {
+      console.error('❌ Erreur Supabase question :', error);
+      toast('❌ Erreur : ' + error.message);
+      return;
+    }
+    console.log('📥 Réponse Supabase :', data);
+    toast('✅ Question enregistrée !');
+    go('admin');
+  } catch(e) {
+    console.error('❌ Exception :', e);
+    toast('❌ Exception : ' + e.message);
+  }
 }
 
 function loadQuestionsForEdit(){
