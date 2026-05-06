@@ -569,7 +569,7 @@ document.addEventListener('click', e => {
 });
 
 /* ── ROUTER ── */
-function go(page, params={}){
+async function go(page, params={}){
   // 🔒 Protection admin
   if (page === 'admin' && !sessionStorage.getItem('admin_ok')) {
     const pw = prompt('Mot de passe administrateur :');
@@ -592,16 +592,24 @@ function go(page, params={}){
     renderQCM(qa); if(!timerIv) initTimer();
   } else {
     ca.classList.remove('hidden'); qa.classList.add('hidden'); qa.style.display='none';
-    render();
+    await render();
   }
 }
 
-function render(){
+async function render(){
   const ca = document.getElementById('content-area');
   const pages = {accueil:rAccueil, series:rSeries, spec:rSpec, sujet:rSujet, sdetail:rSDetail, admin:rAdmin, playlist:rPlaylist};
   const fn = pages[S.page];
-  if(fn) ca.innerHTML = fn();
-  else ca.innerHTML = `<div class="cs"><div class="big">${{examens:'📝',stats:'📊',profil:'👤',abo:'💎'}[S.page]||'🔧'}</div><h2>${{examens:'Examens Blancs',stats:'Statistiques',profil:'Mon Profil',abo:'Abonnement'}[S.page]||S.page}</h2><p>Fonctionnalité à venir prochainement.</p></div>`;
+  if(fn) {
+    const result = fn();
+    if (result instanceof Promise) {
+      ca.innerHTML = await result;
+    } else {
+      ca.innerHTML = result;
+    }
+  } else {
+    ca.innerHTML = `<div class="cs">...`; // laisser la suite inchangée
+  }
   const titles = {accueil:'Accueil',series:'Séries',spec:'Séries',sujet:'Séries',sdetail:'Séries',admin:'Administration',examens:'Examens Blancs',stats:'Statistiques',profil:'Mon Profil',abo:'Abonnement'};
   setTitle(titles[S.page]||S.page);
 }
@@ -1272,7 +1280,7 @@ async function deleteSelectedQuestion(){
   if (!success) {
     document.getElementById('content-area').innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Erreur de connexion à la base de données. Vérifiez vos clés Supabase et votre connexion.</div>';
   }
-  go('series');
+  await go('series');
 })();
 </script>
 </body>
