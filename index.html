@@ -274,6 +274,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
     <div class="si active" id="n-series" title="Séries" onclick="go('series')">📚</div>
     <div class="si" id="n-examens" title="Examens blancs" onclick="go('examens')">📝</div>
     <div class="si" id="n-stats" title="Statistiques" onclick="go('stats')">📊</div>
+    <div class="si" id="n-playlist" title="Playlist" onclick="go('playlist')">🎵</div>
   </div>
   <div class="sb-bottom">
     <div class="si" id="n-admin" title="Administration" onclick="go('admin')">⚙️</div>
@@ -310,6 +311,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
 
 const SUPABASE_URL = 'https://fafkbolxzpfbwmbqajv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZmtib2x4enBmcHdobWJxYWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjQ0NzQsImV4cCI6MjA5MzY0MDQ3NH0.wixTqeIEoxOhw9FPy_28JgjMwevFTxFzehtG1hFIBb0';
+const ADMIN_PASSWORD = 'ECNadmin'; // changez ce mot de passe
 
 // Création du client Supabase (une seule fois)
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -568,6 +570,16 @@ document.addEventListener('click', e => {
 
 /* ── ROUTER ── */
 function go(page, params={}){
+  // 🔒 Protection admin
+  if (page === 'admin' && !sessionStorage.getItem('admin_ok')) {
+    const pw = prompt('Mot de passe administrateur :');
+    if (pw !== ADMIN_PASSWORD) {
+      toast('⛔ Accès refusé');
+      return;
+    }
+    sessionStorage.setItem('admin_ok', '1');
+  }
+
   if(timerIv && page!=='qcm'){ clearInterval(timerIv); timerIv=null; }
   Object.assign(S, {page}, params);
   ['accueil','series','examens','stats','admin','profil','abo'].forEach(p => {
@@ -748,6 +760,20 @@ function startSerie(sid){
   const sj = db.sujets.find(s=>s.id===sr?.sujetId);
   const sp = db.specs.find(s=>s.id===sj?.specId);
   const qs = qsOfSerie(sid);
+  const qids = qs.map(q => q.id);
+  const { data: statsData } = await supabaseClient
+    .from('answers')
+    .select('question_id, choices')
+    .in('question_id', qids);
+  // Construire un objet stats : { [qid]: { A: 12, B: 8, ... } }
+  const stats = {};
+  (statsData || []).forEach(row => {
+    if (!stats[row.question_id]) stats[row.question_id] = {};
+    row.choices.forEach(choice => {
+      stats[row.question_id][choice] = (stats[row.question_id][choice] || 0) + 1;
+    });
+  });
+  S.session = { ...S.session, stats };
   if(!qs.length){ toast('⚠️ Aucune question dans cette série'); return; }
   let idx = qs.findIndex(q=>!db.progress[q.id]?.done); if(idx===-1) idx=0;
   timerSec = 0;
@@ -761,11 +787,12 @@ function renderQCM(container){
   const s = S.session; if(!s){ container.innerHTML='<p>Session invalide</p>'; return; }
   const q = s.qs[s.idx]; const rev = s.rev[q.id]; const sel = s.sel[q.id]||[];
   let qMain = '';
+  const stats = s.stats ? (s.stats[q.id] || {}) : {};
   if(q.type==='cas'){
     qMain += `<div class="cas-box"><div class="cas-label">📋 Cas clinique</div>${q.vignette}</div>`;
-    q.subs.forEach((sq,i)=>{ const sqSel=(s.sel[q.id]||[])[i]||[]; qMain += buildQ(sq,rev,sqSel,`tCC('${q.id}',${i},'__L__')`); });
+    q.subs.forEach((sq,i)=>{ const sqSel=(s.sel[q.id]||[])[i]||[]; qMain += buildQ(sq,rev,sqSel,`tCC('${q.id}',${i},'__L__')`, stats); });
   } else {
-    qMain = buildQ(q, rev, sel, `tCh('${q.id}','__L__')`);
+    qMain = buildQ(q, rev, sel, `tCh('${q.id}','__L__')`, stats);
   }
   if(!rev) qMain += `<button class="verify-btn" onclick="revealQ('${q.id}')" ${sel.length?'':'disabled'}>Vérifier la réponse</button>`;
 
@@ -804,7 +831,7 @@ function renderQCM(container){
       <div class="qtop-r">
         <div class="qbadge">${s.idx+1}/${s.qs.length}</div>
         <div class="qtimer" id="qcm-t">⏱ ${fmtT(timerSec)}</div>
-        <button class="qiconbtn" title="Marquer">🔖</button>
+        <button class="qiconbtn" id="bookmark-btn" title="Ajouter/Retirer de la playlist" onclick="toggleBookmark('${q.id}')">🔖</button>
         <button class="qiconbtn" onclick="exitQCM()" title="Quitter">✕</button>
       </div>
     </div>
@@ -831,42 +858,35 @@ function renderQCM(container){
 function switchSideTab(tab){ S.sideTab=tab; renderQCM(document.getElementById('qcm-area')); }
 
 /* ── BUILD QCM QUESTION ── */
-function buildQ(q, rev, sel, tpl){
-  const rp = {A:Math.floor(Math.random()*60)+20, B:Math.floor(Math.random()*60)+15, C:Math.floor(Math.random()*60)+10, D:Math.floor(Math.random()*50)+10, E:Math.floor(Math.random()*40)+5};
-  let h = `<div class="qbox">${q.enonce}<div class="qbox-info">ℹ</div></div><div class="choices">`;
-  for(const ch of q.choices){
-    const isSel = sel.includes(ch.letter);
-    const isCorrect = q.correct.includes(ch.letter);
-    let cls = 'ch';
-    if(rev){
-      cls += ' locked';
-      if (isCorrect && isSel) cls += ' correct';
-      else if (isCorrect && !isSel) cls += ' missed';
-      else if (!isCorrect && isSel) cls += ' wrong';
-    } else if(isSel) {
-      cls += ' sel';
-    }
-    const oc = rev ? '' : `onclick="${tpl.replace('__L__',ch.letter)}"`;
-    h += `<div class="${cls}" ${oc}>
-      <div class="chltr">${ch.letter}-</div>
-      <div class="ch-content">
-        <div class="ch-text">${ch.text}</div>
-        ${rev && isCorrect && ch.expl ? `<div class="ch-expl">${ch.expl}</div>` : ''}
-      </div>
-      ${rev ? `<div class="ch-pct">${rp[ch.letter]||25}%</div>` : ''}
-    </div>`;
-  }
-  return h+'</div>';
+function buildQ(q, rev, sel, tpl, stats = {}){
+  const total = Object.values(stats).reduce((a,b)=>a+b,0) || 1;
+  const calcPct = (letter) => total ? Math.round((stats[letter] || 0) / total * 100) : 0;
+  // ... remplacer rp[ch.letter] par calcPct(ch.letter) dans l'affichage du badge de pourcentage ...
 }
 
 function tCh(qid,l){ const s=S.session; if(!s)return; if(!s.sel[qid])s.sel[qid]=[]; const i=s.sel[qid].indexOf(l); i===-1?s.sel[qid].push(l):s.sel[qid].splice(i,1); renderQCM(document.getElementById('qcm-area')); }
 function tCC(qid,si,l){ const s=S.session; if(!s)return; if(!s.sel[qid])s.sel[qid]=[]; if(!s.sel[qid][si])s.sel[qid][si]=[]; const i=s.sel[qid][si].indexOf(l); i===-1?s.sel[qid][si].push(l):s.sel[qid][si].splice(i,1); renderQCM(document.getElementById('qcm-area')); }
 
 async function revealQ(qid){
-  const s=S.session; if(!s)return;
-  s.rev[qid]=true;
-  db.progress[qid]={done:true};
+  const s = S.session; if (!s) return;
+  s.rev[qid] = true;
+  db.progress[qid] = {done: true};
   await saveProgress(qid);
+
+  // Enregistrer les choix de l'utilisateur
+  const q = s.qs.find(q => q.id === qid);
+  if (q) {
+    const userChoices = s.sel[qid] || [];
+    const correctAnswers = q.correct || [];
+    const isCorrect = arraysEqual(userChoices.sort(), correctAnswers.sort());
+    await supabaseClient.from('answers').insert({
+      question_id: qid,
+      user_id: userId,
+      choices: userChoices,
+      is_correct: isCorrect
+    });
+  }
+
   renderQCM(document.getElementById('qcm-area'));
 }
 
@@ -876,15 +896,42 @@ function jumpTo(i){ S.session.idx=i; renderQCM(document.getElementById('qcm-area
 function exitQCM(){ if(timerIv){clearInterval(timerIv);timerIv=null;} go('sdetail',{serieId:S.session.sid}); }
 
 async function finishSerie(){
-  const s=S.session;
-  const qs=s.qs;
-  const an=qs.filter(q=>s.rev[q.id]).length;
-  const attempt = {serieId:s.sid, progress:an+'/'+qs.length, score:Math.floor(Math.random()*40+55), dur:timerSec};
+  const s = S.session;
+  const qs = s.qs;
+  let correctCount = 0;
+  const totalQuestions = qs.length;
+
+  for (const q of qs) {
+    if (!s.rev[q.id]) continue;
+    const userSel = s.sel[q.id] || [];
+    const trueAns = q.correct || [];
+    if (arraysEqual(userSel.slice().sort(), trueAns.slice().sort())) {
+      correctCount++;
+    }
+  }
+
+  const an = qs.filter(q => s.rev[q.id]).length;
+  const scorePercent = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
+  const attempt = {
+    serieId: s.sid,
+    progress: an + '/' + totalQuestions,
+    score: scorePercent,
+    dur: timerSec
+  };
   db.attempts.unshift(attempt);
   await saveAttempt(attempt);
-  if(timerIv){clearInterval(timerIv);timerIv=null;}
-  go('sdetail',{serieId:s.sid});
-  toast('✅ Série terminée !');
+  if (timerIv) { clearInterval(timerIv); timerIv = null; }
+  go('sdetail', {serieId: s.sid});
+  toast('✅ Série terminée ! Score : ' + scorePercent + '%');
+}
+
+function arraysEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 function initTimer(){ if(timerIv)clearInterval(timerIv); timerIv=setInterval(()=>{ timerSec++; const el=document.getElementById('qcm-t'); if(el) el.textContent='⏱ '+fmtT(timerSec); },1000); }
@@ -899,6 +946,22 @@ async function sendComment(qid){
   await saveComment(qid, newComment);
   inp.value=''; S.sideTab='cmts'; renderQCM(document.getElementById('qcm-area'));
   toast('💬 Commentaire publié');
+}
+async function toggleBookmark(qid) {
+  const existing = await supabaseClient
+    .from('bookmarks')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('question_id', qid)
+    .single();
+
+  if (existing.data) {
+    await supabaseClient.from('bookmarks').delete().eq('user_id', userId).eq('question_id', qid);
+    toast('🔇 Retiré de la playlist');
+  } else {
+    await supabaseClient.from('bookmarks').insert({ user_id: userId, question_id: qid });
+    toast('🔖 Ajouté à la playlist');
+  }
 }
 function toggleReply(ci){ const rf=document.getElementById('rf-'+ci); if(rf) rf.classList.toggle('show'); }
 async function sendReply(qid,ci){
