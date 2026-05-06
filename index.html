@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Résidanat+</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -161,6 +160,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
 .ch.correct .chltr{background:var(--green);color:#fff}
 .ch.wrong .chltr{background:var(--red);color:#fff}
 .ch.missed .chltr{background:var(--orange);color:#fff}
+.ch-content{flex:1}
+.ch-text{font-size:13px;line-height:1.4}
+.ch-expl{font-size:12px;color:#424242;margin-top:6px;background:rgba(255,255,255,.7);border-radius:5px;padding:6px 8px;line-height:1.5}
 .ch-pct{font-size:11px;font-weight:700;color:var(--blue);background:#fff;border:1.5px solid var(--blue-light);border-radius:20px;padding:2px 7px;align-self:center;flex-shrink:0}
 .ch.correct .ch-pct{color:var(--green);border-color:#c8e6c9}
 .ch.wrong .ch-pct{color:var(--red);border-color:#ffcdd2}
@@ -299,13 +301,20 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
 
 <div class="toast" id="toast"></div>
 
-<script>
-// ── CONFIGURATION SUPABASE ──
-const SUPABASE_URL = 'https://fafkbolxzpfpwhmbqaiv.supabase.co/';   // ← Remplacez
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZmtib2x4enBmcHdobWJxYWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjQ0NzQsImV4cCI6MjA5MzY0MDQ3NH0.wixTqeIEoxOhw9FPy_28JgjMwevFTxFzehtG1hFIBb0';                 // ← Remplacez
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<!-- SUPABASE CDN (une seule fois) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-// ID utilisateur persistant (localStorage)
+<script>
+// ⚠️ NE PAS déclarer 'supabase' en var/const avant
+// ⚠️ Utiliser le 'supabase' global de la bibliothèque
+
+const SUPABASE_URL = 'https://fafkbolxzpfbwmbqajv.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZmtib2x4enBmcHdobWJxYWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjQ0NzQsImV4cCI6MjA5MzY0MDQ3NH0.wixTqeIEoxOhw9FPy_28JgjMwevFTxFzehtG1hFIBb0';
+
+// Création du client Supabase (une seule fois)
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ID utilisateur persistant
 let userId = localStorage.getItem('r2_user_id');
 if (!userId) {
   userId = 'u' + Date.now() + Math.random().toString(36).slice(2, 8);
@@ -341,88 +350,93 @@ const SPECS_DEFAULT = [
   {id:'pediatrie',name:'Pédiatrie',jour:'j2'},
   {id:'rhumato',name:'Rhumatologie',jour:'j2'},
   {id:'endo',name:'Endocrinologie',jour:'j2'},
-  {id:'urgences',name:'Urgences-Réanimation',jour:'j2'},
+  {id:'urgences',name:'Urgences-Réanimation',jour:'j2'}
 ];
 
 // ── CHARGEMENT DE LA DATABASE ──
 async function loadDB() {
-  const [specsRes, sujetsRes, seriesRes, questionsRes, progressRes, attemptsRes, commentsRes] = await Promise.all([
-    supabase.from('specs').select('*'),
-    supabase.from('sujets').select('*'),
-    supabase.from('series').select('*'),
-    supabase.from('questions').select('*'),
-    supabase.from('progress').select('*').eq('user_id', userId),
-    supabase.from('attempts').select('*').eq('user_id', userId).order('date', { ascending: false }),
-    supabase.from('comments').select('*').order('date', { ascending: true })
-  ]);
+  try {
+    const [specsRes, sujetsRes, seriesRes, questionsRes, progressRes, attemptsRes, commentsRes] = await Promise.all([
+      supabaseClient.from('specs').select('*'),
+      supabaseClient.from('sujets').select('*'),
+      supabaseClient.from('series').select('*'),
+      supabaseClient.from('questions').select('*'),
+      supabaseClient.from('progress').select('*').eq('user_id', userId),
+      supabaseClient.from('attempts').select('*').eq('user_id', userId).order('date', { ascending: false }),
+      supabaseClient.from('comments').select('*').order('date', { ascending: true })
+    ]);
 
-  db.specs = specsRes.data || [];
-  // Insérer les specs par défaut si la table est vide
-  if (db.specs.length === 0) {
-    await supabase.from('specs').upsert(SPECS_DEFAULT);
-    db.specs = [...SPECS_DEFAULT];
-  }
+    db.specs = specsRes.data || [];
+    if (db.specs.length === 0) {
+      // Fallback : insérer les spécialités par défaut
+      await supabaseClient.from('specs').upsert(SPECS_DEFAULT);
+      db.specs = [...SPECS_DEFAULT];
+    }
 
-  db.sujets = (sujetsRes.data || []).map(s => ({ id: s.id, specId: s.spec_id, name: s.name }));
-  db.series = (seriesRes.data || []).map(s => ({ id: s.id, sujetId: s.sujet_id, source: s.source, year: s.year }));
-  db.questions = (questionsRes.data || []).map(q => ({
-    id: q.id,
-    serieId: q.serie_id,
-    type: q.type,
-    enonce: q.enonce,
-    vignette: q.vignette,
-    choices: q.choices,
-    correct: q.correct,
-    subs: q.subs
-  }));
+    db.sujets = (sujetsRes.data || []).map(s => ({ id: s.id, specId: s.spec_id, name: s.name }));
+    db.series = (seriesRes.data || []).map(s => ({ id: s.id, sujetId: s.sujet_id, source: s.source, year: s.year }));
+    db.questions = (questionsRes.data || []).map(q => ({
+      id: q.id,
+      serieId: q.serie_id,
+      type: q.type,
+      enonce: q.enonce,
+      vignette: q.vignette,
+      choices: q.choices,
+      correct: q.correct,
+      subs: q.subs
+    }));
 
-  db.progress = {};
-  (progressRes.data || []).forEach(p => {
-    if (!db.progress[p.question_id]) db.progress[p.question_id] = {};
-    db.progress[p.question_id].done = p.done;
-  });
+    db.progress = {};
+    (progressRes.data || []).forEach(p => {
+      if (!db.progress[p.question_id]) db.progress[p.question_id] = {};
+      db.progress[p.question_id].done = p.done;
+    });
 
-  db.attempts = (attemptsRes.data || []).map(a => ({
-    id: a.id,
-    serieId: a.serie_id,
-    progress: a.progress,
-    score: a.score,
-    dur: a.dur,
-    date: a.date
-  }));
+    db.attempts = (attemptsRes.data || []).map(a => ({
+      serieId: a.serie_id,
+      progress: a.progress,
+      score: a.score,
+      dur: a.dur,
+      date: a.date
+    }));
 
-  db.comments = {};
-  (commentsRes.data || []).forEach(c => {
-    const qid = c.question_id;
-    if (!db.comments[qid]) db.comments[qid] = [];
-    if (!c.parent_id) {
-      db.comments[qid].push({
-        _dbId: c.id,
-        user: c.user_name,
-        text: c.text,
-        date: new Date(c.date).getTime(),
-        replies: []
-      });
-    } else {
-      // Chercher le commentaire parent
-      for (const parent of (db.comments[qid] || [])) {
-        if (parent._dbId === c.parent_id) {
-          parent.replies.push({
-            user: c.user_name,
-            text: c.text,
-            date: new Date(c.date).getTime()
-          });
-          break;
+    db.comments = {};
+    (commentsRes.data || []).forEach(c => {
+      const qid = c.question_id;
+      if (!db.comments[qid]) db.comments[qid] = [];
+      if (!c.parent_id) {
+        db.comments[qid].push({
+          _dbId: c.id,
+          user: c.user_name,
+          text: c.text,
+          date: new Date(c.date).getTime(),
+          replies: []
+        });
+      } else {
+        for (const parent of (db.comments[qid] || [])) {
+          if (parent._dbId === c.parent_id) {
+            parent.replies.push({
+              user: c.user_name,
+              text: c.text,
+              date: new Date(c.date).getTime()
+            });
+            break;
+          }
         }
       }
-    }
-  });
+    });
+
+    return true;
+  } catch (err) {
+    console.error('Erreur chargement Supabase :', err);
+    return false;
+  }
 }
 
-// ── SAUVEGARDES CIBLEES SUPABASE ──
+// ── SAUVEGARDES ──
 async function saveProgress(qid) {
   const done = db.progress[qid]?.done || false;
-  await supabase.from('progress').upsert({
+  await supabaseClient.from('progress').upsert({
     user_id: userId,
     question_id: qid,
     done: done
@@ -430,7 +444,7 @@ async function saveProgress(qid) {
 }
 
 async function saveAttempt(attempt) {
-  await supabase.from('attempts').insert({
+  await supabaseClient.from('attempts').insert({
     user_id: userId,
     serie_id: attempt.serieId,
     progress: attempt.progress,
@@ -441,7 +455,7 @@ async function saveAttempt(attempt) {
 }
 
 async function saveComment(questionId, comment) {
-  const { data, error } = await supabase.from('comments').insert({
+  const { data } = await supabaseClient.from('comments').insert({
     question_id: questionId,
     user_name: comment.user,
     text: comment.text,
@@ -457,8 +471,7 @@ async function saveComment(questionId, comment) {
 async function saveReply(questionId, parentIndex, reply) {
   const parent = db.comments[questionId]?.[parentIndex];
   if (!parent?._dbId) {
-    // Fallback
-    await supabase.from('comments').insert({
+    await supabaseClient.from('comments').insert({
       question_id: questionId,
       user_name: reply.user,
       text: reply.text,
@@ -467,7 +480,7 @@ async function saveReply(questionId, parentIndex, reply) {
     });
     return;
   }
-  await supabase.from('comments').insert({
+  await supabaseClient.from('comments').insert({
     question_id: questionId,
     user_name: reply.user,
     text: reply.text,
@@ -476,17 +489,14 @@ async function saveReply(questionId, parentIndex, reply) {
   });
 }
 
-async function saveSpec(spec) {
-  await supabase.from('specs').upsert(spec);
-}
 async function saveSujet(sujet) {
-  await supabase.from('sujets').upsert({ id: sujet.id, spec_id: sujet.specId, name: sujet.name });
+  await supabaseClient.from('sujets').upsert({ id: sujet.id, spec_id: sujet.specId, name: sujet.name });
 }
 async function saveSerie(serie) {
-  await supabase.from('series').upsert({ id: serie.id, sujet_id: serie.sujetId, source: serie.source, year: serie.year });
+  await supabaseClient.from('series').upsert({ id: serie.id, sujet_id: serie.sujetId, source: serie.source, year: serie.year });
 }
 async function saveQuestion(question) {
-  await supabase.from('questions').upsert({
+  await supabaseClient.from('questions').upsert({
     id: question.id,
     serie_id: question.serieId,
     type: question.type,
@@ -498,10 +508,10 @@ async function saveQuestion(question) {
   });
 }
 async function deleteQuestionFromDB(id) {
-  await supabase.from('questions').delete().eq('id', id);
+  await supabaseClient.from('questions').delete().eq('id', id);
 }
 
-// ── HELPERS GLOBAUX ──
+// ── HELPERS ──
 function qsOfSerie(sid){ return db.questions.filter(q => q.serieId === sid); }
 function answered(qs){ return qs.filter(q => db.progress[q.id]?.done).length; }
 function pct(a,t){ return t>0 ? Math.round(a/t*100) : 0; }
@@ -726,7 +736,7 @@ function rSDetail(){
 async function resetSerie(sid){
   for(const q of qsOfSerie(sid)){
     delete db.progress[q.id];
-    await supabase.from('progress').delete().eq('user_id',userId).eq('question_id',q.id);
+    await supabaseClient.from('progress').delete().eq('user_id',userId).eq('question_id',q.id);
   }
   toast('✅ Progression réinitialisée');
   render();
@@ -820,7 +830,7 @@ function renderQCM(container){
 
 function switchSideTab(tab){ S.sideTab=tab; renderQCM(document.getElementById('qcm-area')); }
 
-/* ── BUILD QCM QUESTION avec les 4 états de couleur ── */
+/* ── BUILD QCM QUESTION ── */
 function buildQ(q, rev, sel, tpl){
   const rp = {A:Math.floor(Math.random()*60)+20, B:Math.floor(Math.random()*60)+15, C:Math.floor(Math.random()*60)+10, D:Math.floor(Math.random()*50)+10, E:Math.floor(Math.random()*40)+5};
   let h = `<div class="qbox">${q.enonce}<div class="qbox-info">ℹ</div></div><div class="choices">`;
@@ -830,10 +840,9 @@ function buildQ(q, rev, sel, tpl){
     let cls = 'ch';
     if(rev){
       cls += ' locked';
-      if (isCorrect && isSel) cls += ' correct';       // bon + coché → vert
-      else if (isCorrect && !isSel) cls += ' missed';  // bon + non coché → jaune
-      else if (!isCorrect && isSel) cls += ' wrong';   // faux + coché → rouge
-      // faux + non coché : reste neutre
+      if (isCorrect && isSel) cls += ' correct';
+      else if (isCorrect && !isSel) cls += ' missed';
+      else if (!isCorrect && isSel) cls += ' wrong';
     } else if(isSel) {
       cls += ' sel';
     }
@@ -871,7 +880,7 @@ async function finishSerie(){
   const qs=s.qs;
   const an=qs.filter(q=>s.rev[q.id]).length;
   const attempt = {serieId:s.sid, progress:an+'/'+qs.length, score:Math.floor(Math.random()*40+55), dur:timerSec};
-  db.attempts.unshift(attempt); // pour l'affichage immédiat
+  db.attempts.unshift(attempt);
   await saveAttempt(attempt);
   if(timerIv){clearInterval(timerIv);timerIv=null;}
   go('sdetail',{serieId:s.sid});
@@ -911,7 +920,6 @@ function rAdmin(){
   const serieOpts = db.series.length ? db.series.map(sr=>{const sj=db.sujets.find(s=>s.id===sr.sujetId);const sp=db.specs.find(s=>s.id===sj?.specId);return`<option value="${sr.id}">${sp?.name||'?'} › ${sj?.name||'?'} › ${sr.source} ${sr.year}</option>`;}).join('') : '<option value="">— Créez d\'abord une série —</option>';
   return `<div>
   <div style="font-size:20px;font-weight:800;margin-bottom:4px">⚙️ Administration</div><div class="title-line"></div>
-  <!-- 1. Créer un sujet -->
   <div class="asec"><div class="atitle">📁 1. Créer un sujet</div>
     <div class="fgrid">
       <div class="field"><label>Spécialité</label><select id="as-spec">${specOpts}</select></div>
@@ -919,7 +927,6 @@ function rAdmin(){
       <div class="fa"><button class="btn-save" onclick="addSujet()">+ Créer le sujet</button></div>
     </div>
   </div>
-  <!-- 2. Créer une série -->
   <div class="asec"><div class="atitle">📄 2. Créer une série</div>
     <div class="fgrid">
       <div class="field"><label>Sujet</label><select id="ar-sujet">${sujetOpts}</select></div>
@@ -928,7 +935,6 @@ function rAdmin(){
       <div class="fa"><button class="btn-save" onclick="addSerie()">+ Créer la série</button></div>
     </div>
   </div>
-  <!-- 3. Ajouter une question -->
   <div class="asec"><div class="atitle">❓ 3. Ajouter une question</div>
     <div class="fgrid">
       <div class="field"><label>Série cible</label><select id="aq-serie">${serieOpts}</select></div>
@@ -959,7 +965,6 @@ function rAdmin(){
       </div>
     </div>
   </div>
-  <!-- 4. Éditer / Supprimer une question -->
   <div class="asec"><div class="atitle">✏️ 4. Éditer / Supprimer une question</div>
     <div class="fgrid">
       <div class="field"><label>Série</label><select id="eq-serie" onchange="loadQuestionsForEdit()">${serieOpts}</select></div>
@@ -987,7 +992,6 @@ function rAdmin(){
       </div>
     </div>
   </div>
-  <!-- Statistiques -->
   <div class="asec"><div class="atitle">📊 Statistiques du contenu</div>
     <div class="stats-g">
       <div class="stat-c"><div class="stat-n">${db.specs.length}</div><div class="stat-l">Spécialités</div></div>
@@ -998,7 +1002,6 @@ function rAdmin(){
   </div></div>`;
 }
 
-/* ── FONCTIONS ADMIN EXISTANTES ── */
 function toggleType(){
   const t = document.getElementById('aq-type')?.value;
   ['wrap-enonce','wrap-choices','wrap-correct','wrap-expl'].forEach(id=>document.getElementById(id)?.classList.toggle('hidden',t==='cas'));
@@ -1067,7 +1070,6 @@ async function addQuestion(){
   toast('✅ Question enregistrée !'); go('admin');
 }
 
-/* ── NOUVELLES FONCTIONS D'ÉDITION ── */
 function loadQuestionsForEdit(){
   const sid = document.getElementById('eq-serie')?.value;
   const sel = document.getElementById('eq-question');
@@ -1115,16 +1117,14 @@ async function saveEditedQuestion(){
     const firstCorrect = choices.find(c => c.letter === correct[0]);
     if (firstCorrect) firstCorrect.expl = expl;
   }
-  // Mise à jour locale
   const q = db.questions.find(q => q.id === qid);
   if (q) {
     q.enonce = enonce;
     q.choices = choices;
     q.correct = correct;
-    if (q.type === 'cas') q.vignette = enonce; // simplifié
+    if (q.type === 'cas') q.vignette = enonce;
   }
-  // Sauvegarde Supabase
-  await supabase.from('questions').update({ enonce, choices, correct }).eq('id', qid);
+  await supabaseClient.from('questions').update({ enonce, choices, correct }).eq('id', qid);
   toast('✅ Question modifiée !');
   document.getElementById('eq-edit-form')?.classList.add('hidden');
 }
@@ -1142,7 +1142,10 @@ async function deleteSelectedQuestion(){
 
 /* ── INIT ── */
 (async function init(){
-  await loadDB();
+  const success = await loadDB();
+  if (!success) {
+    document.getElementById('content-area').innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Erreur de connexion à la base de données. Vérifiez vos clés Supabase et votre connexion.</div>';
+  }
   go('series');
 })();
 </script>
