@@ -824,7 +824,7 @@ async function resetSerie(sid){
 }
 
 /* ── START SESSION ── */
-function startSerie(sid){
+async function startSerie(sid){
   const sr = db.series.find(s=>s.id===sid);
   const sj = db.sujets.find(s=>s.id===sr?.sujetId);
   const sp = db.specs.find(s=>s.id===sj?.specId);
