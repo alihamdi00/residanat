@@ -1214,17 +1214,18 @@ async function addSerie(){
 }
 
 async function addQuestion(){
-  console.log('🔵 addQuestion() appelé');
   const sid = document.getElementById('aq-serie')?.value;
   const type = document.getElementById('aq-type')?.value;
-  console.log('   serie :', sid, '| type :', type);
+  
+  // 🔒 Vérification de l'existence de la série
+  const serieExiste = db.series.some(s => s.id === sid);
+  if (!serieExiste) {
+    toast('❌ Série introuvable. Retournez à l\'accueil puis revenez dans Admin pour actualiser la liste.');
+    return;
+  }
+
   if(!sid){ toast('⚠️ Sélectionnez une série'); return; }
-  let question;
-  if(type === 'qcm'){
-    const enonceEl = document.getElementById('aq-enonce');
-    const enonce = enonceEl?.value?.trim();
-    console.log('   énoncé brut :', enonceEl?.value, '| après trim :', enonce);
-    if(!enonce){ toast('⚠️ Entrez un énoncé'); return; }
+  // ... la suite de la fonction ne change pas
     // ... (le reste de la création des choix, correct, etc.) ...
     console.log('🟢 Objet question :', question);
   } else {
