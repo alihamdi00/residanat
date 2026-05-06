@@ -309,12 +309,29 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);displ
 // ⚠️ NE PAS déclarer 'supabase' en var/const avant
 // ⚠️ Utiliser le 'supabase' global de la bibliothèque
 
-const SUPABASE_URL = 'https://fafkbolxzpfbwmbqajv.supabase.co';
+const SUPABASE_URL = 'https://fafkbolxzpfpwhmbqaiv.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZmtib2x4enBmcHdobWJxYWl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjQ0NzQsImV4cCI6MjA5MzY0MDQ3NH0.wixTqeIEoxOhw9FPy_28JgjMwevFTxFzehtG1hFIBb0';
 const ADMIN_PASSWORD = 'ECNadmin'; // changez ce mot de passe
 
 // Création du client Supabase (une seule fois)
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+supabaseClient.from = (function (originalFrom) {
+  return function (table) {
+    console.log('📦 supabase.from(' + table + ')');
+    const builder = originalFrom.call(this, table);
+    const origUpsert = builder.upsert;
+    builder.upsert = function (...args) {
+      console.log('📤 upsert args:', args);
+      return origUpsert.apply(this, args);
+    };
+    const origInsert = builder.insert;
+    builder.insert = function (...args) {
+      console.log('📤 insert args:', args);
+      return origInsert.apply(this, args);
+    };
+    return builder;
+  };
+})(supabaseClient.from);
 
 // ID utilisateur persistant
 let userId = localStorage.getItem('r2_user_id');
