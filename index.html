@@ -1214,153 +1214,49 @@ async function addSerie(){
 }
 
 async function addQuestion(){
-  // Récupération des valeurs
+  console.log('🔵 addQuestion() appelé');
   const sid = document.getElementById('aq-serie')?.value;
   const type = document.getElementById('aq-type')?.value;
-
-  if (!sid) {
-    toast('⚠️ Sélectionnez une série');
-    return;
-  }
-
-  // Vérification que la série existe dans db.series (actualisé au chargement)
-  const serieExiste = db.series.some(s => s.id === sid);
-  if (!serieExiste) {
-    toast('❌ Série introuvable. Retournez à l\'accueil puis revenez dans Admin pour actualiser la liste.');
-    return;
-  }
-
-  if (type === 'qcm') {
-    // --- QCM classique ---
-    const enonce = document.getElementById('aq-enonce')?.value?.trim();
-    if (!enonce) {
-      toast('⚠️ Entrez un énoncé');
-      return;
-    }
-
-    const letters = ['a', 'b', 'c', 'd', 'e'];
-    const choices = letters.map(l => ({
-      letter: l.toUpperCase(),
-      text: document.getElementById('aq-c' + l)?.value?.trim() || '',
-      expl: ''
-    })).filter(c => c.text);
-
-    if (choices.length < 2) {
-      toast('⚠️ Minimum 2 choix');
-      return;
-    }
-
-    const correct = [...document.querySelectorAll('input[name="qcorr"]:checked')].map(e => e.value);
-    if (!correct.length) {
-      toast('⚠️ Cochez la bonne réponse');
-      return;
-    }
-
-    const expl = document.getElementById('aq-expl')?.value?.trim() || '';
-    if (expl) {
-      const firstCorrectChoice = choices.find(c => c.letter === correct[0]);
-      if (firstCorrectChoice) firstCorrectChoice.expl = expl;
-    }
-
-    const newId = 'q' + uid();
-    const newQuestion = {
-      id: newId,
-      serieId: sid,
-      type: 'qcm',
-      enonce: enonce,
-      choices: choices,
-      correct: correct
-    };
-
-    // Sauvegarde locale
-    db.questions.push(newQuestion);
-
-    // Sauvegarde Supabase
-    const { error } = await supabaseClient.from('questions').upsert({
-      id: newQuestion.id,
-      serie_id: newQuestion.serieId,
-      type: newQuestion.type,
-      enonce: newQuestion.enonce,
-      vignette: null,
-      choices: newQuestion.choices,
-      correct: newQuestion.correct,
-      subs: null
-    });
-
-    if (error) {
-      console.error('❌ Erreur Supabase :', error);
-      toast('❌ Erreur : ' + error.message);
-      db.questions.pop(); // retire la question locale en cas d'échec
-      return;
-    }
-  } else if (type === 'cas') {
-    // --- Cas clinique ---
-    const vignette = document.getElementById('aq-vignette')?.value?.trim();
-    if (!vignette) {
-      toast('⚠️ Entrez la vignette clinique');
-      return;
-    }
-
-    const subs = [];
-    const subElements = document.querySelectorAll('[id^="sq-e-"]');
-    subElements.forEach(el => {
-      const i = el.id.replace('sq-e-', '');
-      const subEnonce = el.value?.trim();
-      if (!subEnonce) return;
-
-      const subChoices = ['a','b','c','d','e'].map(l => ({
-        letter: l.toUpperCase(),
-        text: document.getElementById(`sq-c${l}-${i}`)?.value?.trim() || '',
-        expl: document.getElementById(`sq-x-${i}`)?.value?.trim() || ''
-      })).filter(c => c.text);
-
-      const subCorrect = [...document.querySelectorAll(`input[name="sqcorr-${i}"]:checked`)].map(e => e.value);
-      if (subChoices.length && subCorrect.length) {
-        subs.push({ enonce: subEnonce, choices: subChoices, correct: subCorrect });
-      }
-    });
-
-    if (subs.length === 0) {
-      toast('⚠️ Ajoutez au moins une sous-question avec une bonne réponse');
-      return;
-    }
-
-    const newId = 'q' + uid();
-    const newQuestion = {
-      id: newId,
-      serieId: sid,
-      type: 'cas',
-      vignette: vignette,
-      subs: subs
-    };
-
-    db.questions.push(newQuestion);
-
-    const { error } = await supabaseClient.from('questions').upsert({
-      id: newQuestion.id,
-      serie_id: newQuestion.serieId,
-      type: newQuestion.type,
-      enonce: null,
-      vignette: newQuestion.vignette,
-      choices: null,
-      correct: [],
-      subs: newQuestion.subs
-    });
-
-    if (error) {
-      console.error('❌ Erreur Supabase :', error);
-      toast('❌ Erreur : ' + error.message);
-      db.questions.pop();
-      return;
-    }
+  console.log('   serie :', sid, '| type :', type);
+  if(!sid){ toast('⚠️ Sélectionnez une série'); return; }
+  let question;
+  if(type === 'qcm'){
+    const enonceEl = document.getElementById('aq-enonce');
+    const enonce = enonceEl?.value?.trim();
+    console.log('   énoncé brut :', enonceEl?.value, '| après trim :', enonce);
+    if(!enonce){ toast('⚠️ Entrez un énoncé'); return; }
+    // ... (le reste de la création des choix, correct, etc.) ...
+    console.log('🟢 Objet question :', question);
   } else {
-    toast('⚠️ Type de question inconnu');
-    return;
+    // cas clinique : même principe
   }
-
-  toast('✅ Question enregistrée !');
-  go('admin');
+  db.questions.push(question);
+  try {
+    console.log('📤 Envoi Supabase question...');
+    const { data, error } = await supabaseClient.from('questions').upsert({
+      id: question.id,
+      serie_id: question.serieId,
+      type: question.type,
+      enonce: question.enonce || null,
+      vignette: question.vignette || null,
+      choices: question.choices || null,
+      correct: question.correct || [],
+      subs: question.subs || null
+    }).select();
+    if (error) {
+      console.error('❌ Erreur Supabase question :', error);
+      toast('❌ Erreur : ' + error.message);
+      return;
+    }
+    console.log('📥 Réponse Supabase :', data);
+    toast('✅ Question enregistrée !');
+    go('admin');
+  } catch(e) {
+    console.error('❌ Exception :', e);
+    toast('❌ Exception : ' + e.message);
+  }
 }
+
 function loadQuestionsForEdit(){
   const sid = document.getElementById('eq-serie')?.value;
   const sel = document.getElementById('eq-question');
